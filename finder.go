@@ -1,6 +1,7 @@
 package finder
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"strings"
@@ -93,8 +94,12 @@ func (c *Command) Run() ([]string, error) {
 	if len(shell) == 0 {
 		shell = "sh"
 	}
+
+	var stdout bytes.Buffer
 	cmd := exec.Command(shell, "-c", c.Path+" "+strings.Join(c.Args, " "))
+	cmd.Stdout = &stdout
 	cmd.Stderr = os.Stderr
+
 	in, _ := cmd.StdinPipe()
 	errCh := make(chan error, 1)
 	go func() {
@@ -105,11 +110,21 @@ func (c *Command) Run() ([]string, error) {
 		errCh <- nil
 		in.Close()
 	}()
+
+	if err := cmd.Start(); err != nil {
+		return []string{}, err
+	}
+
 	err := <-errCh
 	if err != nil {
 		return []string{}, err
 	}
-	result, _ := cmd.Output()
+
+	if err := cmd.Wait(); err != nil {
+		return []string{}, err
+	}
+
+	result := stdout.String()
 	return trimLastNewline(strings.Split(string(result), "\n")), nil
 }
 
